@@ -12,7 +12,11 @@ permissions:
 
 jobs:
   check:
-    if: contains(github.event.issue.labels.*.name, 'app-registration') && github.event.issue.state == 'open'
+    # Requests filed with the form carry the label. Requests filed with the API by someone
+    # without write access lose their labels, so a request is also recognised by its title.
+    if: >-
+      github.event.issue.state == 'open' &&
+      (contains(github.event.issue.labels.*.name, 'app-registration') || startsWith(github.event.issue.title, 'Register app:'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
@@ -25,7 +29,7 @@ jobs:
             const issue = context.payload.issue;
             // Issue forms render each field as "### <label>" followed by its value.
             const field = (label) => {
-              const match = (issue.body ?? "").match(new RegExp(`### ${label}\\s*\\n+([\\s\\S]*?)(?=\\n### |$)`));
+              const match = (issue.body ?? "").match(new RegExp(`### ${label}[ \\t]*\\n+([\\s\\S]*?)(?=\\n[ \\t]*### |$)`));
               const value = match ? match[1].trim() : "";
               return value === "_No response_" ? "" : value;
             };
@@ -72,9 +76,9 @@ jobs:
             if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             else await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body });
 
-            const add = ready ? "ready-for-review" : "needs-changes";
+            const add = [ready ? "ready-for-review" : "needs-changes", "app-registration"];
             const drop = ready ? "needs-changes" : "ready-for-review";
-            await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: [add] });
+            await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: add });
             if (issue.labels.some((label) => label.name === drop)) {
               await github.rest.issues.removeLabel({ owner, repo, issue_number: issue.number, name: drop });
             }

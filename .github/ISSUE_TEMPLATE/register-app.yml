@@ -1,0 +1,50 @@
+name: Register an app on tirohealth.app
+description: Ask Tiro to approve a web address for your app.
+title: "Register app: "
+labels: ["app-registration"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tiro approves every app on tirohealth.app by hand. Once approved, each push to `main` of your
+        repository publishes the app at `https://<name>.tirohealth.app`.
+
+        **This request is public.** Do not include patient data or anything confidential.
+  - type: input
+    id: repository
+    attributes:
+      label: Repository
+      description: The GitHub repository of your app, as owner/name.
+      placeholder: jdoe/my-clinical-app
+    validations:
+      required: true
+  - type: input
+    id: repository_id
+    attributes:
+      label: Repository id
+      description: "The repository's number. Find it with: gh api repos/OWNER/NAME --jq .id"
+      placeholder: "1377146463"
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Web address name
+      description: "Your app will live at https://NAME.tirohealth.app. 3 to 20 lowercase letters, digits or hyphens, starting with a letter and not ending with a hyphen."
+      placeholder: my-clinical-app
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What does the app do?
+      description: One or two sentences, and who will use it.
+    validations:
+      required: true
+  - type: checkboxes
+    id: install
+    attributes:
+      label: Tiro Deploy
+      options:
+        - label: I installed the Tiro.health Deploy GitHub App on this repository (https://github.com/apps/tiro-health-deploy/installations/new).
+          required: true

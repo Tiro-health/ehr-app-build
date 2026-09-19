@@ -1,0 +1,80 @@
+# Checks each app registration request opened with the "Register an app" form, and tells the
+# requester in a comment what is still wrong, or that it is ready for Tiro to review.
+# It only reads the request and public information: Tiro approves apps by hand.
+name: Check registration request
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    if: contains(github.event.issue.labels.*.name, 'app-registration') && github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const MARKER = "<!-- tiro-registration-check -->";
+            // Keep in line with RESERVED_NAMES in Tiro-health/ehr-app-manager (reconciler/src/registry.ts).
+            const RESERVED = new Set(["www", "api", "auth", "ehr", "admin", "app", "apps", "manager", "status", "mail", "staging", "tiro-deploy"]);
+
+            const issue = context.payload.issue;
+            // Issue forms render each field as "### <label>" followed by its value.
+            const field = (label) => {
+              const match = (issue.body ?? "").match(new RegExp(`### ${label}\\s*\\n+([\\s\\S]*?)(?=\\n### |$)`));
+              const value = match ? match[1].trim() : "";
+              return value === "_No response_" ? "" : value;
+            };
+            const repository = field("Repository").replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "");
+            const repositoryId = field("Repository id");
+            const name = field("Web address name").toLowerCase();
+
+            const problems = [];
+            const notes = [];
+            if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) problems.push("**Repository** must be written as `owner/name`.");
+            if (!/^[0-9]+$/.test(repositoryId)) problems.push("**Repository id** must be the repository's number (`gh api repos/OWNER/NAME --jq .id`).");
+            if (!/^[a-z][a-z0-9-]{1,18}[a-z0-9]$/.test(name)) {
+              problems.push("**Web address name** must be 3 to 20 lowercase letters, digits or hyphens, starting with a letter and not ending with a hyphen.");
+            } else if (RESERVED.has(name)) {
+              problems.push(`**Web address name** \`${name}\` is reserved. Please pick another.`);
+            } else {
+              const response = await fetch(`https://${name}.tirohealth.app/`, { redirect: "manual" });
+              if (response.status !== 404) problems.push(`**Web address name** \`${name}\` is already taken. Please pick another.`);
+            }
+
+            if (problems.length === 0 && /^[\w.-]+\/[\w.-]+$/.test(repository)) {
+              try {
+                const [owner, repo] = repository.split("/");
+                const { data } = await github.rest.repos.get({ owner, repo });
+                if (String(data.id) !== repositoryId) problems.push(`**Repository id** does not match ${repository}, whose id is ${data.id}.`);
+              } catch {
+                notes.push("The repository is private, so Tiro checks the repository id by hand.");
+              }
+            }
+
+            const ready = problems.length === 0;
+            const body = [
+              MARKER,
+              ready
+                ? `Thanks! This request looks complete. Tiro reviews it by hand; once approved, pushes to \`main\` of ${repository} publish the app at https://${name}.tirohealth.app.`
+                : "This request needs a change before Tiro can review it. Edit the issue to fix:",
+              ...problems.map((problem) => `- ${problem}`),
+              ...notes.map((note) => `\n${note}`),
+            ].join("\n");
+
+            const { owner, repo } = context.repo;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: issue.number });
+            const existing = comments.find((comment) => comment.body?.startsWith(MARKER));
+            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body });
+
+            const add = ready ? "ready-for-review" : "needs-changes";
+            const drop = ready ? "needs-changes" : "ready-for-review";
+            await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: [add] });
+            if (issue.labels.some((label) => label.name === drop)) {
+              await github.rest.issues.removeLabel({ owner, repo, issue_number: issue.number, name: drop });
+            }

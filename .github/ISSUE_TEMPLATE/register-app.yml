@@ -22,10 +22,8 @@ body:
     id: repository_id
     attributes:
       label: Repository id
-      description: "The repository's number. Find it with: gh api repos/OWNER/NAME --jq .id"
+      description: "Optional. The repository's number, if you know it. Leave it empty and Tiro fills it in. With the GitHub CLI: gh api repos/OWNER/NAME --jq .id"
       placeholder: "1377146463"
-    validations:
-      required: true
   - type: input
     id: name
     attributes:

@@ -40,7 +40,7 @@ jobs:
             const problems = [];
             const notes = [];
             if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) problems.push("**Repository** must be written as `owner/name`.");
-            if (!/^[0-9]+$/.test(repositoryId)) problems.push("**Repository id** must be the repository's number (`gh api repos/OWNER/NAME --jq .id`).");
+            if (repositoryId && !/^[0-9]+$/.test(repositoryId)) problems.push("**Repository id**, if you fill it in, must be the repository's number. Leave it empty and Tiro fills it in.");
             if (!/^[a-z][a-z0-9-]{1,18}[a-z0-9]$/.test(name)) {
               problems.push("**Web address name** must be 3 to 20 lowercase letters, digits or hyphens, starting with a letter and not ending with a hyphen.");
             } else if (RESERVED.has(name)) {
@@ -54,9 +54,10 @@ jobs:
               try {
                 const [owner, repo] = repository.split("/");
                 const { data } = await github.rest.repos.get({ owner, repo });
-                if (String(data.id) !== repositoryId) problems.push(`**Repository id** does not match ${repository}, whose id is ${data.id}.`);
+                if (!repositoryId) notes.push(`The repository id is ${data.id}.`);
+                else if (String(data.id) !== repositoryId) problems.push(`**Repository id** does not match ${repository}, whose id is ${data.id}.`);
               } catch {
-                notes.push("The repository is private, so Tiro checks the repository id by hand.");
+                notes.push("The repository is private, so Tiro looks its id up when approving.");
               }
             }
 

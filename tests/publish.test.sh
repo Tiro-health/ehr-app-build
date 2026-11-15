@@ -12,7 +12,8 @@ setup() {
   echo 0 > "$stub/clock"
   : > "$stub/calls"
   export STUB_DIR="$stub" PATH="$stub/bin:$PATH"
-  # Stub knobs: list output per call (list.1, list.2, ...; list.default after), and how many
+  # Stub knobs: list output per call (list.1, list.2, ...; list.default after), list errors
+  # (list.<n>.err, list.err.default), and how many
   # impersonation attempts are refused before one succeeds.
   export STUB_REFUSE_IMPERSONATION=0
   mkdir "$stub/bin"
@@ -23,6 +24,10 @@ case "$1 $2" in
   "run services")
     if [ "$3" = list ]; then
       n=$(( $(cat "$STUB_DIR/list.count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB_DIR/list.count"
+      # list.<n>.err / list.err.default: print it to stderr and fail instead.
+      for f in "$STUB_DIR/list.$n.err" "$STUB_DIR/list.err.default"; do
+        if [ -f "$f" ]; then cat "$f" >&2; exit 1; fi
+      done
       if [ -f "$STUB_DIR/list.$n" ]; then cat "$STUB_DIR/list.$n"; else cat "$STUB_DIR/list.default" 2>/dev/null; fi
     fi ;;
   "auth print-access-token")
@@ -119,6 +124,42 @@ test_impersonation_never_allowed_times_out() {
   run find-app --repository-id 42
   check "never allowed: fails with the not-linked message" [ "$(tail -n 1 <<< "$err")" = "$unlinked" ]
   check "never allowed: gives up after 10 minutes" [ "$(cat "$stub/clock")" -eq 600 ]
+}
+
+denied="ERROR: (gcloud.run.services.list) PERMISSION_DENIED: Permission 'run.services.list' denied on resource"
+
+test_permission_denied_then_found() {
+  setup
+  echo "$denied" > "$stub/list.1.err"
+  echo "ERROR: (gcloud.run.services.list) HTTPError 403: Forbidden" > "$stub/list.2.err"
+  echo "notes" > "$stub/list.default"
+  run find-app --repository-id 42
+  check "denied: succeeds once the list is allowed" [ "$status" -eq 0 ]
+  check "denied: prints the app" [ "$out" = notes ]
+  check "denied: retried with the setup message (PERMISSION_DENIED and 403)" [ "$(count "$err" "$ready")" -eq 2 ]
+  check "denied: same backoff" [ "$(grep '^sleep' "$stub/calls" | paste -sd ' ' -)" = "sleep 5 sleep 10" ]
+  check "denied: gcloud's error not shown" [ "$(count "$err" "PERMISSION_DENIED")" -eq 0 ]
+}
+
+test_permission_denied_times_out() {
+  setup
+  echo "$denied" > "$stub/list.err.default"
+  run find-app --repository-id 42
+  check "always denied: fails" [ "$status" -ne 0 ]
+  check "always denied: ends with the not-linked message" [ "$(tail -n 1 <<< "$err")" = "$unlinked" ]
+  check "always denied: gives up after 10 minutes" [ "$(cat "$stub/clock")" -eq 600 ]
+}
+
+test_other_list_error_fails_at_once() {
+  setup
+  echo "ERROR: (gcloud.run.services.list) There was a problem refreshing your current auth tokens" > "$stub/list.err.default"
+  run find-app --repository-id 42
+  check "other list error: fails" [ "$status" -ne 0 ]
+  check "other list error: no retry" [ "$(count "$err" "$ready")" -eq 0 ]
+  check "other list error: no sleep" [ "$(grep -c '^sleep' "$stub/calls")" -eq 0 ]
+  check "other list error: shows gcloud's error" contains "$err" "problem refreshing"
+  check "other list error: says the list failed" contains "$err" "Could not list the Tiro apps"
+  check "other list error: no not-linked message" [ "$(count "$err" "$unlinked")" -eq 0 ]
 }
 
 test_two_matches() {

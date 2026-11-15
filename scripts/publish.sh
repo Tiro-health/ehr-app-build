@@ -38,12 +38,20 @@ deploy_account() { echo "deploy-$1@$PROJECT.iam.gserviceaccount.com"; }
 valid_app() { [[ "$1" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; }
 
 # Sets `app` and returns 0 on exactly one match, returns 1 on none, exits on several.
+# The repository may only list services while its app is active, so permission denied counts
+# as no match: the app is not set up yet, suspended, or not registered.
 lookup_app() {
-  local repository_id="$1" names count
-  names="$(gcloud run services list \
+  local repository_id="$1" names count errors
+  errors="$(mktemp)"
+  if ! names="$(gcloud run services list \
     --project "$PROJECT" --region "$REGION" \
     --filter "metadata.labels.tiro-repository-id=$repository_id" \
-    --format "value(metadata.name)")" || fail "Could not list the Tiro apps (gcloud run services list failed)."
+    --format "value(metadata.name)" 2> "$errors")"; then
+    if grep -qE 'PERMISSION_DENIED|403' "$errors"; then rm -f "$errors"; return 1; fi
+    cat "$errors" >&2; rm -f "$errors"
+    fail "Could not list the Tiro apps (gcloud run services list failed)."
+  fi
+  rm -f "$errors"
   names="$(printf '%s\n' "$names" | sed '/^[[:space:]]*$/d')"
   count="$(printf '%s' "$names" | grep -c . || true)"
   if [ "$count" -eq 0 ]; then return 1; fi

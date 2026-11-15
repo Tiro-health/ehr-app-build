@@ -10,7 +10,7 @@
 #     pull_request:
 #   jobs:
 #     build:
-#       uses: Tiro-health/ehr-app-build/.github/workflows/build.yml@v1
+#       uses: Tiro-health/ehr-app-build/.github/workflows/build.yml@v2
 #
 # This workflow needs no secrets and no access to Google Cloud. It runs `check` and `build`,
 # packages the output into an image with scripts/package.sh (run it from an app repository to
@@ -34,7 +34,7 @@ on:
       tooling-ref:
         description: Ref of Tiro-health/ehr-app-build to take scripts/package.sh from.
         type: string
-        default: v1
+        default: v2
 
 permissions:
   contents: read

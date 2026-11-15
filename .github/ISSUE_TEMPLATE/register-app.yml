@@ -6,8 +6,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Tiro approves every app on tirohealth.app by hand. Once approved, each push to `main` of your
-        repository publishes the app at `https://<name>.tirohealth.app`.
+        Tiro approves every app on tirohealth.app by hand and registers it for the owner of your
+        repository. You then install the Tiro.health GitHub App on the repository, sign in with GitHub
+        on the EHR's setup page and confirm the link. No pull request is opened: the workflow file
+        comes with the template; any other repository calls `.github/workflows/build.yml` of this repository. Once linked, each push
+        to `main` publishes the app at `https://<name>.tirohealth.app`.
 
         **This request is public.** Do not include patient data or anything confidential.
   - type: input
@@ -42,7 +45,7 @@ body:
   - type: checkboxes
     id: install
     attributes:
-      label: Tiro Deploy
+      label: GitHub App
       options:
-        - label: I installed the Tiro.health Deploy GitHub App on this repository (https://github.com/apps/tiro-health-deploy/installations/new).
+        - label: I will install the Tiro.health GitHub App on this repository (https://github.com/apps/tiro-health-deploy/installations/new). It reads repository metadata only.
           required: true

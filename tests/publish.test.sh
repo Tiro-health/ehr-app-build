@@ -66,7 +66,10 @@ test_check_app_empty() {
   setup
   GITHUB_ACTIONS=true GITHUB_OUTPUT="$stub/output" GITHUB_STEP_SUMMARY="$stub/summary" run check-app --app ""
   check "check-app empty: succeeds" [ "$status" -eq 0 ]
-  check "check-app empty: a notice, not an error" contains "$err" "::notice title=Not published::"
+  check "check-app empty: a notice, not an error or warning" contains "$err" "::notice title=Not published%3A link this repository on Tiro::"
+  check "check-app empty: points to the run summary" contains "$err" "See the run summary for the setup link."
+  check "check-app empty: summary has a heading" grep -qx "### Not published yet" "$stub/summary"
+  check "check-app empty: summary links the setup page" grep -qF "[EHR setup page]($setup_url)" "$stub/summary"
   check "check-app empty: links the setup page" contains "$err" "$setup_url"
   check "check-app empty: names the variable" contains "$err" "TIRO_EHR_APP_NAME"
   check "check-app empty: skips the publish steps" grep -qx "publish=false" "$stub/output"

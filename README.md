@@ -70,7 +70,10 @@ app's code; it takes the image from the `tiro-image` artifact. Then
    pushes the image to `europe-west1-docker.pkg.dev/ehr-factory-apps/apps-<app>/app:<commit>`,
    and rolls a new revision that replaces the `app` container's image. The `smart-sidecar`
    container is left as it is.
-3. Writes `https://<app>.tirohealth.app` to the job summary under "Published".
+3. Writes `https://<app>.tirohealth.app` to the job summary under "Published", and records a
+   deployment to the environment `Tiro.health` with that URL: the commit and its pull request show
+   "Deployed to Tiro.health" with a **View deployment** link. GitHub creates the environment in
+   the app repository on the first publish. Runs without `app` record no deployment.
 
 A newly linked app takes a moment to be set up. While its deploy account refuses this
 repository, the job retries for up to 10 minutes, printing "This app is still being set up on

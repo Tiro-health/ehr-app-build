@@ -103,7 +103,7 @@ test_deploy_empty_app() {
 
 test_deploy() {
   setup
-  GITHUB_STEP_SUMMARY="$stub/summary" run "${deploy_args[@]}"
+  GITHUB_STEP_SUMMARY="$stub/summary" GITHUB_OUTPUT="$stub/output" run "${deploy_args[@]}"
   check "deploy: succeeds" [ "$status" -eq 0 ]
   check "deploy: no retry" [ "$(count "$err" "$ready")" -eq 0 ]
   check "deploy: pushes to the app's repository" contains "$(calls)" "docker push $target"
@@ -111,6 +111,7 @@ test_deploy() {
     "gcloud run services update notes --region europe-west1 --project ehr-factory-apps --container app --image $target"
   check "deploy: summary has a heading" grep -qx "### Published" "$stub/summary"
   check "deploy: writes the URL to the job summary" grep -qF "https://notes.tirohealth.app" "$stub/summary"
+  check "deploy: writes the URL as a step output" grep -qx "url=https://notes.tirohealth.app" "$stub/output"
   check "deploy: prints the URL" [ "$out" = "https://notes.tirohealth.app" ]
 }
 

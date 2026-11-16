@@ -147,6 +147,13 @@ jobs:
     concurrency:
       group: tiro-publish-${{ github.repository }}
       cancel-in-progress: false
+    # Records a deployment, so a commit and its pull request show "Deployed to Tiro.health" with a
+    # View deployment link to the app. Without an app name there is nothing to deploy, and an empty
+    # name runs the job without an environment. Workload identity matches job_workflow_ref and
+    # repository_id, not the token subject that the environment changes.
+    environment:
+      name: ${{ inputs.app != '' && 'Tiro.health' || '' }}
+      url: ${{ steps.deploy.outputs.url }}
     steps:
       # The script runs with the app's deploy identity, so it always comes from the v2 tag (the
       # ref the deploy accounts trust), never from `tooling-ref`. The app's repository is never
@@ -189,6 +196,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       - name: Push and roll out
+        id: deploy
         if: steps.app.outputs.publish == 'true'
         env:
           APP: ${{ inputs.app }}

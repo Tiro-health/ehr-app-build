@@ -15,7 +15,8 @@
 #     exponential backoff for at most PUBLISH_TIMEOUT_SECONDS (default 600). Then pushes the
 #     image to the app's repository and rolls a new revision that replaces only the `app`
 #     container's image; the smart-sidecar container is left as it is. Prints the deploy URL
-#     and writes it to $GITHUB_STEP_SUMMARY.
+#     and writes it to $GITHUB_STEP_SUMMARY, and as url=<url> to $GITHUB_OUTPUT for the job's
+#     environment link.
 #
 # Needs gcloud and docker. Progress goes to stderr.
 
@@ -98,6 +99,7 @@ deploy() {
     # shellcheck disable=SC2016 # literal backticks: Markdown code span
     printf '### Published\n\n%s\n\nImage: `%s`\n' "$url" "$target" >> "$GITHUB_STEP_SUMMARY"
   fi
+  output "url=$url"
   echo "$url"
 }
 

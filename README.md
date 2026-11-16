@@ -39,8 +39,8 @@ Inputs:
   link the repository on the EHR's setup page (https://ehr.tiro.health/platform/setup), Tiro.health
   sets that variable and, once the app is set up, starts the workflow on the default branch
   (`workflow_dispatch`). Until then the variable is empty and the publish job passes with a
-  "Not published" notice that links the setup page. If Tiro.health could not set the variable,
-  the setup page shows the `gh variable set` command to run. Pull requests and other branches
+  "Not published" notice; the run's summary links the setup page. If Tiro.health could not set
+  the variable, the setup page shows the `gh variable set` command to run. Pull requests and other branches
   only build and do not need it.
 - `tooling-ref`: the ref of this repository the build job takes `scripts/package.sh` from.
   Default `v2`. The publish job ignores it: it always runs `scripts/publish.sh` from the `v2`
@@ -58,8 +58,9 @@ the artifact `tiro-image`.
 app's code; it takes the image from the `tiro-image` artifact. Then
 [`scripts/publish.sh`](scripts/publish.sh), from the `v2` tag:
 
-1. Without `app`, prints a "Not published" notice that links the EHR's setup page, and stops:
-   the job passes and nothing is deployed. An `app` that is not a valid name fails the job.
+1. Without `app`, adds a "Not published" notice and a "Not published yet" section to the run's
+   summary with a link to the EHR's setup page, and stops: the job passes and nothing is
+   deployed. An `app` that is not a valid name fails the job.
 2. Signs in as the app's deploy account `deploy-<app>` through workload identity federation,
    pushes the image to `europe-west1-docker.pkg.dev/ehr-factory-apps/apps-<app>/app:<commit>`,
    and rolls a new revision that replaces the `app` container's image. The `smart-sidecar`

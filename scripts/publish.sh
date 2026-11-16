@@ -31,7 +31,13 @@ MAX_DELAY="${PUBLISH_MAX_DELAY_SECONDS:-60}"
 NOT_READY="This app is still being set up on Tiro: its deploy account is not ready yet. Retrying."
 SETUP_URL="https://ehr.tiro.health/platform/setup"
 NOT_LINKED="This repository is not linked to a Tiro app, or the app is suspended. Link it on the EHR's setup page: $SETUP_URL"
-NOT_SET_UP="Not published: this repository is not set up on Tiro yet. Link it to your app on the EHR's setup page: $SETUP_URL. Tiro.health then sets the repository variable TIRO_EHR_APP_NAME and publishes the app."
+NOT_SET_UP="This repository is not set up on Tiro yet. Link it to your app on the EHR's setup page: $SETUP_URL. Tiro.health then sets the repository variable TIRO_EHR_APP_NAME and publishes the app."
+# Annotations are plain text, so the clickable link and the emphasis go in the job summary.
+# In a workflow command property, ':' is written %3A.
+NOT_SET_UP_TITLE="Not published%3A link this repository on Tiro"
+NOT_SET_UP_SUMMARY="### Not published yet
+
+Link this repository to your app on the [EHR setup page]($SETUP_URL). Tiro.health then sets the repository variable \`TIRO_EHR_APP_NAME\` and publishes the app; no file needs to change."
 NO_APP="No Tiro app given. Set the workflow input \`app\` to your app's name, as shown on the EHR's setup page: $SETUP_URL"
 
 log() { echo "$@" >&2; }
@@ -104,8 +110,12 @@ check_app_command() {
     esac
   done
   if [ -z "$app" ]; then
-    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::notice title=Not published::$NOT_SET_UP" >&2; else log "$NOT_SET_UP"; fi
-    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then printf '### Not published\n\n%s\n' "$NOT_SET_UP" >> "$GITHUB_STEP_SUMMARY"; fi
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+      echo "::notice title=$NOT_SET_UP_TITLE::$NOT_SET_UP See the run summary for the setup link." >&2
+    else
+      log "Not published. $NOT_SET_UP"
+    fi
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then printf '%s\n' "$NOT_SET_UP_SUMMARY" >> "$GITHUB_STEP_SUMMARY"; fi
     output "publish=false"
     return 0
   fi

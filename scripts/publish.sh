@@ -34,7 +34,7 @@ NOT_LINKED="This repository is not linked to a Tiro app, or the app is suspended
 NOT_SET_UP="This repository is not set up on Tiro yet. Link it to your app on the EHR's setup page: $SETUP_URL. Tiro.health then sets the repository variable TIRO_EHR_APP_NAME and publishes the app."
 # Annotations are plain text, so the clickable link and the emphasis go in the job summary.
 # In a workflow command property, ':' is written %3A.
-NOT_SET_UP_TITLE="Not published%3A link this repository on Tiro"
+NOT_SET_UP_TITLE="Not published%3A link this repository on Tiro.health"
 NOT_SET_UP_SUMMARY="### Not published yet
 
 Link this repository to your app on the [EHR setup page]($SETUP_URL). Tiro.health then sets the repository variable \`TIRO_EHR_APP_NAME\` and publishes the app; no file needs to change."
@@ -96,7 +96,7 @@ deploy() {
   log "Deployed $target to $url"
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     # shellcheck disable=SC2016 # literal backticks: Markdown code span
-    printf '### Deployed to Tiro\n\n%s\n\nImage: `%s`\n' "$url" "$target" >> "$GITHUB_STEP_SUMMARY"
+    printf '### Published\n\n%s\n\nImage: `%s`\n' "$url" "$target" >> "$GITHUB_STEP_SUMMARY"
   fi
   echo "$url"
 }

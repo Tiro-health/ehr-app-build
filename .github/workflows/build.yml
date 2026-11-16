@@ -2,7 +2,7 @@
 #
 # The app repo calls it from its own workflow:
 #
-#   name: Build
+#   name: Tiro.health
 #   on:
 #     push:
 #       branches: [main]
@@ -10,7 +10,8 @@
 #     pull_request:
 #     workflow_dispatch:   # Tiro.health starts the first publish once the app is set up
 #   jobs:
-#     build:
+#     app:
+#       name: App
 #       uses: Tiro-health/ehr-app-build/.github/workflows/build.yml@v2
 #       with:
 #         app: ${{ vars.TIRO_EHR_APP_NAME }}   # set by the EHR's setup page when you link the repository
@@ -19,6 +20,9 @@
 #       permissions:
 #         contents: read
 #         id-token: write
+#
+# GitHub names each check `<caller workflow> / <caller job> / <job here>`, so with the caller
+# above the checks read "Tiro.health / App / Build" and "Tiro.health / App / Publish".
 #
 # The `build` job runs `check` and `build` and packages the output into an image with
 # scripts/package.sh (run it from an app repository to get the same image locally). On pushes
@@ -39,7 +43,7 @@
 #   Nitro, listening on $PORT) or dist/index.html (static single-page app, served by nginx
 #   with unknown paths falling back to index.html).
 
-name: Build app
+name: Tiro.health app
 
 on:
   workflow_call:
@@ -63,14 +67,16 @@ permissions:
 
 jobs:
   build:
-    name: Check and build
+    name: Build
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.package.outputs.image }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Check out the app
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           # Its automatic cache needs pnpm installed first; corepack installs it below.
@@ -97,7 +103,8 @@ jobs:
         run: $RUN build
 
       # scripts/package.sh lives in this repository; the same script builds the image on a laptop.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Get the Tiro.health build tools
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: Tiro-health/ehr-app-build
           ref: ${{ inputs.tooling-ref }}
@@ -113,7 +120,7 @@ jobs:
             --image "${GITHUB_REPOSITORY#*/}:$version" \
             --tar "$RUNNER_TEMP/out/image.tar.gz"
 
-      - name: Upload the image
+      - name: Upload image
         if: >-
           (github.event_name == 'push' &&
           (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/v'))) ||
@@ -127,7 +134,7 @@ jobs:
           compression-level: 0
 
   publish:
-    name: Publish to Tiro
+    name: Publish
     needs: build
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
@@ -144,7 +151,8 @@ jobs:
       # The script runs with the app's deploy identity, so it always comes from the v2 tag (the
       # ref the deploy accounts trust), never from `tooling-ref`. The app's repository is never
       # checked out.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Get the Tiro.health build tools
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: Tiro-health/ehr-app-build
           ref: v2
@@ -152,13 +160,14 @@ jobs:
           persist-credentials: false
 
       # Without an app name it writes publish=false and every later step is skipped.
-      - name: Check the app input
+      - name: Check app name
         id: app
         env:
           APP: ${{ inputs.app }}
         run: tiro-build-tooling/scripts/publish.sh check-app --app "$APP"
 
-      - if: steps.app.outputs.publish == 'true'
+      - name: Download image
+        if: steps.app.outputs.publish == 'true'
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: tiro-image
@@ -168,13 +177,15 @@ jobs:
         if: steps.app.outputs.publish == 'true'
         run: docker load --input "$RUNNER_TEMP/image/image.tar.gz"
 
-      - if: steps.app.outputs.publish == 'true'
+      - name: Sign in as the app's deploy account
+        if: steps.app.outputs.publish == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: projects/249607650777/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
           service_account: deploy-${{ inputs.app }}@ehr-factory-apps.iam.gserviceaccount.com
 
-      - if: steps.app.outputs.publish == 'true'
+      - name: Set up gcloud
+        if: steps.app.outputs.publish == 'true'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       - name: Push and roll out

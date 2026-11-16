@@ -66,7 +66,7 @@ test_check_app_empty() {
   setup
   GITHUB_ACTIONS=true GITHUB_OUTPUT="$stub/output" GITHUB_STEP_SUMMARY="$stub/summary" run check-app --app ""
   check "check-app empty: succeeds" [ "$status" -eq 0 ]
-  check "check-app empty: a notice, not an error or warning" contains "$err" "::notice title=Not published%3A link this repository on Tiro::"
+  check "check-app empty: a notice, not an error or warning" contains "$err" "::notice title=Not published%3A link this repository on Tiro.health::"
   check "check-app empty: points to the run summary" contains "$err" "See the run summary for the setup link."
   check "check-app empty: summary has a heading" grep -qx "### Not published yet" "$stub/summary"
   check "check-app empty: summary links the setup page" grep -qF "[EHR setup page]($setup_url)" "$stub/summary"
@@ -109,6 +109,7 @@ test_deploy() {
   check "deploy: pushes to the app's repository" contains "$(calls)" "docker push $target"
   check "deploy: replaces only the app container image" contains "$(calls)" \
     "gcloud run services update notes --region europe-west1 --project ehr-factory-apps --container app --image $target"
+  check "deploy: summary has a heading" grep -qx "### Published" "$stub/summary"
   check "deploy: writes the URL to the job summary" grep -qF "https://notes.tirohealth.app" "$stub/summary"
   check "deploy: prints the URL" [ "$out" = "https://notes.tirohealth.app" ]
 }

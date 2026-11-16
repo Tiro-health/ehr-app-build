@@ -13,11 +13,12 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 jobs:
   build:
     uses: Tiro-health/ehr-app-build/.github/workflows/build.yml@v2
     with:
-      app: <your app name>
+      app: ${{ vars.TIRO_EHR_APP_NAME }}
     permissions:
       contents: read
       id-token: write
@@ -34,9 +35,13 @@ calls it. Without the grant, GitHub refuses to start the run, pull requests incl
 
 Inputs:
 
-- `app`: the name of your Tiro app, as shown on the EHR's setup page, where you also link the
-  repository to it. Required to publish: a push to the default branch without it fails at once.
-  Pull requests and other branches only build and do not need it.
+- `app`: the name of your Tiro app. Pass the repository variable `TIRO_EHR_APP_NAME`: when you
+  link the repository on the EHR's setup page (https://ehr.tiro.health/platform/setup), Tiro.health
+  sets that variable and, once the app is set up, starts the workflow on the default branch
+  (`workflow_dispatch`). Until then the variable is empty and the publish job passes with a
+  "Not published" notice that links the setup page. If Tiro.health could not set the variable,
+  the setup page shows the `gh variable set` command to run. Pull requests and other branches
+  only build and do not need it.
 - `tooling-ref`: the ref of this repository the build job takes `scripts/package.sh` from.
   Default `v2`. The publish job ignores it: it always runs `scripts/publish.sh` from the `v2`
   tag, the ref the deploy accounts trust, so a caller cannot choose the code that runs with
@@ -46,13 +51,15 @@ Inputs:
 
 `build` runs on every push and pull request: install, `check`, `build`, then
 [`scripts/package.sh`](scripts/package.sh) packages the output into an image. On pushes to the
-default branch and `v*` tags it uploads the image as the artifact `tiro-image`.
+default branch and `v*` tags, and on manual runs of the default branch, it uploads the image as
+the artifact `tiro-image`.
 
-`publish` runs after it on pushes to the default branch only. It does not check out or run the
+`publish` runs after it on pushes to, and manual runs of, the default branch. It does not check out or run the
 app's code; it takes the image from the `tiro-image` artifact. Then
 [`scripts/publish.sh`](scripts/publish.sh), from the `v2` tag:
 
-1. Fails at once when `app` is not set.
+1. Without `app`, prints a "Not published" notice that links the EHR's setup page, and stops:
+   the job passes and nothing is deployed. An `app` that is not a valid name fails the job.
 2. Signs in as the app's deploy account `deploy-<app>` through workload identity federation,
    pushes the image to `europe-west1-docker.pkg.dev/ehr-factory-apps/apps-<app>/app:<commit>`,
    and rolls a new revision that replaces the `app` container's image. The `smart-sidecar`

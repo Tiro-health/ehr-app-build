@@ -57,30 +57,37 @@ count() { grep -cF -- "$2" <<< "$1" || true; }
 calls() { cat "$stub/calls"; }
 
 ready="This app is still being set up on Tiro: its deploy account is not ready yet. Retrying."
-unlinked="This repository is not linked to a Tiro app, or the app is suspended. Link it on the EHR's setup page."
+setup_url="https://ehr.tiro.health/platform/setup"
+unlinked="This repository is not linked to a Tiro app, or the app is suspended. Link it on the EHR's setup page: $setup_url"
 target="europe-west1-docker.pkg.dev/ehr-factory-apps/apps-notes/app:abc123"
 deploy_args=(deploy --app notes --image "notes:abc123" --tag abc123)
 
 test_check_app_empty() {
   setup
-  run check-app --app ""
-  check "check-app empty: fails" [ "$status" -ne 0 ]
-  check "check-app empty: names the setup page" contains "$err" "EHR's setup page"
-  check "check-app empty: names the app input" contains "$err" "\`app\`"
+  GITHUB_ACTIONS=true GITHUB_OUTPUT="$stub/output" GITHUB_STEP_SUMMARY="$stub/summary" run check-app --app ""
+  check "check-app empty: succeeds" [ "$status" -eq 0 ]
+  check "check-app empty: a notice, not an error" contains "$err" "::notice title=Not published::"
+  check "check-app empty: links the setup page" contains "$err" "$setup_url"
+  check "check-app empty: names the variable" contains "$err" "TIRO_EHR_APP_NAME"
+  check "check-app empty: skips the publish steps" grep -qx "publish=false" "$stub/output"
+  check "check-app empty: says so in the job summary" grep -qF "$setup_url" "$stub/summary"
   check "check-app empty: no gcloud call" [ ! -s "$stub/calls" ]
 }
 
 test_check_app_invalid() {
   setup
-  run check-app --app "Bad_Name"
+  GITHUB_OUTPUT="$stub/output" run check-app --app "REPLACE-WITH-YOUR-APP-NAME"
   check "check-app invalid: fails" [ "$status" -ne 0 ]
+  check "check-app invalid: links the setup page" contains "$err" "$setup_url"
+  check "check-app invalid: writes no output" [ ! -s "$stub/output" ]
   check "check-app invalid: no gcloud call" [ ! -s "$stub/calls" ]
 }
 
 test_check_app_valid() {
   setup
-  run check-app --app notes
+  GITHUB_OUTPUT="$stub/output" run check-app --app notes
   check "check-app valid: succeeds" [ "$status" -eq 0 ]
+  check "check-app valid: runs the publish steps" grep -qx "publish=true" "$stub/output"
 }
 
 test_deploy_empty_app() {

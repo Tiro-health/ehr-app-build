@@ -8,11 +8,12 @@
 #       branches: [main]
 #       tags: ["v*"]
 #     pull_request:
+#     workflow_dispatch:   # Tiro.health starts the first publish once the app is set up
 #   jobs:
 #     build:
 #       uses: Tiro-health/ehr-app-build/.github/workflows/build.yml@v2
 #       with:
-#         app: <your app name>   # as named on the EHR's setup page
+#         app: ${{ vars.TIRO_EHR_APP_NAME }}   # set by the EHR's setup page when you link the repository
 #       # The publish job signs in to Google Cloud with the run's GitHub identity. A called
 #       # workflow gets no more permissions than the calling job grants, so grant these here.
 #       permissions:
@@ -21,13 +22,15 @@
 #
 # The `build` job runs `check` and `build` and packages the output into an image with
 # scripts/package.sh (run it from an app repository to get the same image locally). On pushes
-# to the default branch or v* tags it uploads the image as the artifact `tiro-image` (kept one
-# day). Pull requests are checked and built but not uploaded.
+# to the default branch or v* tags, and on manual runs of the default branch, it uploads the image
+# as the artifact `tiro-image` (kept one day). Pull requests are checked and built but not uploaded.
 #
-# The `publish` job runs on pushes to the default branch only. It runs none of the app's code:
-# it loads the `tiro-image` artifact, pushes the image as the deploy account of the app named
-# by the `app` input, and rolls a new revision of the app container. It fails at once without
-# `app`. It takes scripts/publish.sh from the v2 tag, never from `tooling-ref`. See the README.
+# The `publish` job runs on pushes to, and manual runs of, the default branch. It runs none of the
+# app's code: it loads the `tiro-image` artifact, pushes the image as the deploy account of the app
+# named by the `app` input, and rolls a new revision of the app container. Without `app` the
+# repository is not set up on Tiro yet: the job passes with a notice that links the EHR's setup
+# page, and deploys nothing. It takes scripts/publish.sh from the v2 tag, never from
+# `tooling-ref`. See the README.
 #
 # Build contract:
 # - npm (package-lock.json) or pnpm (pnpm-lock.yaml, version from "packageManager").
@@ -49,8 +52,9 @@ on:
         default: v2
       app:
         description: >-
-          The Tiro app to deploy, as named on the EHR's setup page. Required to publish: a push
-          to the default branch without it fails.
+          The Tiro app to deploy, as named on the EHR's setup page. Pass
+          `vars.TIRO_EHR_APP_NAME`, which the setup page sets. Without it the publish job deploys
+          nothing and links the setup page in a notice.
         type: string
         default: ""
 
@@ -111,8 +115,9 @@ jobs:
 
       - name: Upload the image
         if: >-
-          github.event_name == 'push' &&
-          (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/v'))
+          (github.event_name == 'push' &&
+          (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: tiro-image
@@ -124,7 +129,9 @@ jobs:
   publish:
     name: Publish to Tiro
     needs: build
-    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -144,27 +151,34 @@ jobs:
           path: tiro-build-tooling
           persist-credentials: false
 
+      # Without an app name it writes publish=false and every later step is skipped.
       - name: Check the app input
+        id: app
         env:
           APP: ${{ inputs.app }}
         run: tiro-build-tooling/scripts/publish.sh check-app --app "$APP"
 
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+      - if: steps.app.outputs.publish == 'true'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: tiro-image
           path: ${{ runner.temp }}/image
 
       - name: Load image
+        if: steps.app.outputs.publish == 'true'
         run: docker load --input "$RUNNER_TEMP/image/image.tar.gz"
 
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+      - if: steps.app.outputs.publish == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: projects/249607650777/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
           service_account: deploy-${{ inputs.app }}@ehr-factory-apps.iam.gserviceaccount.com
 
-      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - if: steps.app.outputs.publish == 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       - name: Push and roll out
+        if: steps.app.outputs.publish == 'true'
         env:
           APP: ${{ inputs.app }}
           IMAGE: ${{ needs.build.outputs.image }}

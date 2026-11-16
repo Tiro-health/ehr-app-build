@@ -4,7 +4,9 @@
 # runs with the app's deploy identity.
 #
 #   scripts/publish.sh check-app --app <name>
-#     Before signing in: fails at once when the caller passed no (or an invalid) app name.
+#     Before signing in. Without a name the repository is not set up on Tiro yet: prints a notice
+#     that links the EHR's setup page and writes publish=false to $GITHUB_OUTPUT, so the publish
+#     job passes without deploying. An invalid name fails. A valid one writes publish=true.
 #
 #   scripts/publish.sh deploy --app <name> --image <local ref> --tag <tag>
 #     Signed in (google-github-actions/auth) as the app's deploy account deploy-<app>. Waits
@@ -27,8 +29,10 @@ INITIAL_DELAY="${PUBLISH_INITIAL_DELAY_SECONDS:-5}"
 MAX_DELAY="${PUBLISH_MAX_DELAY_SECONDS:-60}"
 
 NOT_READY="This app is still being set up on Tiro: its deploy account is not ready yet. Retrying."
-NOT_LINKED="This repository is not linked to a Tiro app, or the app is suspended. Link it on the EHR's setup page."
-NO_APP="No Tiro app given. Set the workflow input \`app\` to your app's name, as shown on the EHR's setup page, where you also link this repository to it."
+SETUP_URL="https://ehr.tiro.health/platform/setup"
+NOT_LINKED="This repository is not linked to a Tiro app, or the app is suspended. Link it on the EHR's setup page: $SETUP_URL"
+NOT_SET_UP="Not published: this repository is not set up on Tiro yet. Link it to your app on the EHR's setup page: $SETUP_URL. Tiro.health then sets the repository variable TIRO_EHR_APP_NAME and publishes the app."
+NO_APP="No Tiro app given. Set the workflow input \`app\` to your app's name, as shown on the EHR's setup page: $SETUP_URL"
 
 log() { echo "$@" >&2; }
 fail() {
@@ -39,8 +43,10 @@ valid_app() { [[ "$1" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; }
 
 check_app() {
   [ -n "$1" ] || fail "$NO_APP"
-  valid_app "$1" || fail "The app name '$1' is not valid: use the name shown on the EHR's setup page."
+  valid_app "$1" || fail "The app name '$1' is not valid: use the name shown on the EHR's setup page: $SETUP_URL"
 }
+
+output() { if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "$1" >> "$GITHUB_OUTPUT"; fi; }
 
 # The active credential impersonates deploy-<app>; minting a token is what fails while the
 # account or its binding is missing.
@@ -97,7 +103,14 @@ check_app_command() {
       *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
   done
+  if [ -z "$app" ]; then
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::notice title=Not published::$NOT_SET_UP" >&2; else log "$NOT_SET_UP"; fi
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then printf '### Not published\n\n%s\n' "$NOT_SET_UP" >> "$GITHUB_STEP_SUMMARY"; fi
+    output "publish=false"
+    return 0
+  fi
   check_app "$app"
+  output "publish=true"
 }
 
 case "${1:-}" in

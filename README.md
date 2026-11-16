@@ -7,7 +7,7 @@ The shared build and publish workflow for apps hosted on `<name>.tirohealth.app`
 Call the workflow from a workflow in the app repository:
 
 ```yaml
-name: Build
+name: Tiro.health
 on:
   push:
     branches: [main]
@@ -15,7 +15,8 @@ on:
   pull_request:
   workflow_dispatch:
 jobs:
-  build:
+  app:
+    name: App
     uses: Tiro-health/ehr-app-build/.github/workflows/build.yml@v2
     with:
       app: ${{ vars.TIRO_EHR_APP_NAME }}
@@ -23,6 +24,10 @@ jobs:
       contents: read
       id-token: write
 ```
+
+A commit then shows two checks, **Tiro.health / App / Build** and **Tiro.health / App / Publish**.
+GitHub names a check `<calling workflow> / <calling job> / <job in this workflow>`; the first
+two parts come from your file, the last from this one.
 
 `v2` is the tag with this deploy path. `v1` is the old Tiro Deploy path, where the workflow
 only uploads the image and the Tiro Deploy GitHub App deploys it; it needs no `id-token: write`
@@ -39,7 +44,7 @@ Inputs:
   link the repository on the EHR's setup page (https://ehr.tiro.health/platform/setup), Tiro.health
   sets that variable and, once the app is set up, starts the workflow on the default branch
   (`workflow_dispatch`). Until then the variable is empty and the publish job passes with a
-  "Not published" notice; the run's summary links the setup page. If Tiro.health could not set
+  "Not published: link this repository on Tiro.health" notice; the run's summary links the setup page. If Tiro.health could not set
   the variable, the setup page shows the `gh variable set` command to run. Pull requests and other branches
   only build and do not need it.
 - `tooling-ref`: the ref of this repository the build job takes `scripts/package.sh` from.
@@ -49,12 +54,12 @@ Inputs:
 
 ## What it does
 
-`build` runs on every push and pull request: install, `check`, `build`, then
+**Build** (job `build`) runs on every push and pull request: install, `check`, `build`, then
 [`scripts/package.sh`](scripts/package.sh) packages the output into an image. On pushes to the
 default branch and `v*` tags, and on manual runs of the default branch, it uploads the image as
 the artifact `tiro-image`.
 
-`publish` runs after it on pushes to, and manual runs of, the default branch. It does not check out or run the
+**Publish** (job `publish`) runs after it on pushes to, and manual runs of, the default branch. It does not check out or run the
 app's code; it takes the image from the `tiro-image` artifact. Then
 [`scripts/publish.sh`](scripts/publish.sh), from the `v2` tag:
 
@@ -65,7 +70,10 @@ app's code; it takes the image from the `tiro-image` artifact. Then
    pushes the image to `europe-west1-docker.pkg.dev/ehr-factory-apps/apps-<app>/app:<commit>`,
    and rolls a new revision that replaces the `app` container's image. The `smart-sidecar`
    container is left as it is.
-3. Writes `https://<app>.tirohealth.app` to the job summary.
+3. Writes `https://<app>.tirohealth.app` to the job summary under "Published", and records a
+   deployment to the environment `Tiro.health` with that URL: the commit and its pull request show
+   "Deployed to Tiro.health" with a **View deployment** link. GitHub creates the environment in
+   the app repository on the first publish. Runs without `app` record no deployment.
 
 A newly linked app takes a moment to be set up. While its deploy account refuses this
 repository, the job retries for up to 10 minutes, printing "This app is still being set up on

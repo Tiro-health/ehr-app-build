@@ -12,8 +12,8 @@ setup() {
   echo 0 > "$stub/clock"
   : > "$stub/calls"
   export STUB_DIR="$stub" PATH="$stub/bin:$PATH"
-  # How many token requests are refused before one succeeds.
-  export STUB_REFUSE_TOKEN=0
+  # How many token requests are refused before one succeeds; likewise reads of the service.
+  export STUB_REFUSE_TOKEN=0 STUB_REFUSE_SERVICE=0
   mkdir "$stub/bin"
   cat > "$stub/bin/gcloud" <<'EOF'
 #!/usr/bin/env bash
@@ -22,6 +22,11 @@ if [ "$1 $2" = "auth print-access-token" ]; then
   n=$(( $(cat "$STUB_DIR/token.count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB_DIR/token.count"
   if [ "$n" -le "$STUB_REFUSE_TOKEN" ]; then echo "ERROR: PERMISSION_DENIED iam.serviceAccounts.getAccessToken" >&2; exit 1; fi
   echo token
+fi
+if [ "$1 $2 $3" = "run services describe" ]; then
+  n=$(( $(cat "$STUB_DIR/service.count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB_DIR/service.count"
+  if [ "$n" -le "$STUB_REFUSE_SERVICE" ]; then echo "ERROR: (gcloud.run.services.describe) Cannot find service" >&2; exit 1; fi
+  echo notes
 fi
 EOF
   cat > "$stub/bin/docker" <<'EOF'
@@ -58,6 +63,8 @@ calls() { cat "$stub/calls"; }
 
 ready="This app is still being set up on Tiro: its deploy account is not ready yet. Retrying."
 setup_url="https://ehr.tiro.health/platform/setup"
+service_ready="This app is still being set up on Tiro: its service is not ready yet. Retrying."
+unfinished="Tiro has not finished setting up this app. Run this workflow again in a few minutes; if it fails again, contact Tiro.health."
 unlinked="This repository is not linked to a Tiro app, or the app is suspended. Link it on the EHR's setup page: $setup_url"
 target="europe-west1-docker.pkg.dev/ehr-factory-apps/apps-notes/app:abc123"
 deploy_args=(deploy --app notes --image "notes:abc123" --tag abc123)
@@ -138,6 +145,30 @@ test_account_never_ready_times_out() {
     [ "$(grep '^sleep' "$stub/calls" | sort -t' ' -k2 -n | tail -n 1)" = "sleep 60" ]
   check "timeout: never pushes or rolls" [ "$(count "$(calls)" "docker push")$(count "$(calls)" "services update")" = "00" ]
   check "timeout: prints nothing on stdout" [ -z "$out" ]
+}
+
+test_retry_until_service_ready() {
+  setup
+  export STUB_REFUSE_TOKEN=1 STUB_REFUSE_SERVICE=2
+  run "${deploy_args[@]}"
+  check "service: succeeds once the service can be read" [ "$status" -eq 0 ]
+  check "service: says the account is not ready first" [ "$(count "$err" "$ready")" -eq 1 ]
+  check "service: then that the service is not ready" [ "$(count "$err" "$service_ready")" -eq 2 ]
+  check "service: one backoff across both waits" \
+    [ "$(grep '^sleep' "$stub/calls" | paste -sd ' ' -)" = "sleep 5 sleep 10 sleep 20" ]
+  check "service: pushes only after the service is ready" \
+    [ "$(grep -n 'docker push' "$stub/calls" | cut -d: -f1)" -gt "$(grep -n 'services describe' "$stub/calls" | tail -n 1 | cut -d: -f1)" ]
+}
+
+test_service_never_ready_times_out() {
+  setup
+  export STUB_REFUSE_SERVICE=1000
+  run "${deploy_args[@]}"
+  check "service timeout: fails" [ "$status" -ne 0 ]
+  check "service timeout: says Tiro has not finished, not that the repository is unlinked" \
+    [ "$(tail -n 1 <<< "$err")" = "$unfinished" ]
+  check "service timeout: gives up after 10 minutes" [ "$(cat "$stub/clock")" -eq 600 ]
+  check "service timeout: never pushes or rolls" [ "$(count "$(calls)" "docker push")$(count "$(calls)" "services update")" = "00" ]
 }
 
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do "$t"; done

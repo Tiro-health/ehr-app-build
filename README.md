@@ -75,10 +75,12 @@ app's code; it takes the image from the `tiro-image` artifact. Then
    "Deployed to Tiro.health" with a **View deployment** link. GitHub creates the environment in
    the app repository on the first publish. Runs without `app` record no deployment.
 
-A newly linked app takes a moment to be set up. While its deploy account refuses this
-repository, the job retries for up to 10 minutes, printing "This app is still being set up on
-Tiro". After that it fails with "This repository is not linked to a Tiro app, or the app is
-suspended": check the app name, and link the repository on the EHR's setup page.
+A newly linked app takes a moment to be set up, and Tiro.health starts the first run at linking.
+While the app's deploy account refuses this repository, or its service is not there yet, the job
+retries for up to 10 minutes, printing "This app is still being set up on Tiro". After that it
+fails. "This repository is not linked to a Tiro app, or the app is suspended": check the app
+name, and link the repository on the EHR's setup page. "Tiro has not finished setting up this
+app": run the workflow again in a few minutes.
 
 ## Develop
 

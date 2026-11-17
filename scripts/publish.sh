@@ -10,9 +10,11 @@
 #
 #   scripts/publish.sh deploy --app <name> --image <local ref> --tag <tag>
 #     Signed in (google-github-actions/auth) as the app's deploy account deploy-<app>. Waits
-#     until that account can be used: while the impersonation is refused (the account or its
-#     binding to this repository does not exist yet, or the app is suspended) it retries with
-#     exponential backoff for at most PUBLISH_TIMEOUT_SECONDS (default 600). Then pushes the
+#     until that account can be used and can read the app's service: while the impersonation is
+#     refused (the account or its binding to this repository does not exist yet, or the app is
+#     suspended) or the service is not there yet (Tiro creates it after the binding) it retries
+#     with exponential backoff for at most PUBLISH_TIMEOUT_SECONDS (default 600), so a run that
+#     Tiro.health starts at linking waits for the app to be set up. Then pushes the
 #     image to the app's repository and rolls a new revision that replaces only the `app`
 #     container's image; the smart-sidecar container is left as it is. Prints the deploy URL
 #     and writes it to $GITHUB_STEP_SUMMARY, and as url=<url> to $GITHUB_OUTPUT for the job's
@@ -31,6 +33,8 @@ MAX_DELAY="${PUBLISH_MAX_DELAY_SECONDS:-60}"
 
 NOT_READY="This app is still being set up on Tiro: its deploy account is not ready yet. Retrying."
 SETUP_URL="https://ehr.tiro.health/platform/setup"
+SERVICE_NOT_READY="This app is still being set up on Tiro: its service is not ready yet. Retrying."
+NOT_FINISHED="Tiro has not finished setting up this app. Run this workflow again in a few minutes; if it fails again, contact Tiro.health."
 NOT_LINKED="This repository is not linked to a Tiro app, or the app is suspended. Link it on the EHR's setup page: $SETUP_URL"
 NOT_SET_UP="This repository is not set up on Tiro yet. Link it to your app on the EHR's setup page: $SETUP_URL. Tiro.health then sets the repository variable TIRO_EHR_APP_NAME and publishes the app."
 # Annotations are plain text, so the clickable link and the emphasis go in the job summary.
@@ -56,15 +60,24 @@ check_app() {
 output() { if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "$1" >> "$GITHUB_OUTPUT"; fi; }
 
 # The active credential impersonates deploy-<app>; minting a token is what fails while the
-# account or its binding is missing.
-wait_for_account() {
-  local deadline delay now wait
+# account or its binding is missing. The service, and the account's right to read it, come after
+# the binding.
+wait_for_app() {
+  local app="$1" deadline delay now wait account
   deadline=$(( $(date +%s) + TIMEOUT ))
   delay="$INITIAL_DELAY"
-  until gcloud auth print-access-token >/dev/null 2>&1; do
+  while true; do
+    account=""
+    if gcloud auth print-access-token >/dev/null 2>&1; then
+      account=ready
+      if gcloud run services describe "$app" --region "$REGION" --project "$PROJECT" \
+        --format 'value(name)' >/dev/null 2>&1; then return 0; fi
+    fi
     now="$(date +%s)"
-    if [ "$now" -ge "$deadline" ]; then fail "$NOT_LINKED"; fi
-    log "$NOT_READY"
+    if [ "$now" -ge "$deadline" ]; then
+      if [ -n "$account" ]; then fail "$NOT_FINISHED"; else fail "$NOT_LINKED"; fi
+    fi
+    if [ -n "$account" ]; then log "$SERVICE_NOT_READY"; else log "$NOT_READY"; fi
     wait=$(( deadline - now < delay ? deadline - now : delay ))
     sleep "$wait"
     delay=$(( delay * 2 > MAX_DELAY ? MAX_DELAY : delay * 2 ))
@@ -83,7 +96,7 @@ deploy() {
   done
   [ -n "$image" ] && [ -n "$tag" ] || { echo "deploy needs --app, --image and --tag" >&2; exit 2; }
   check_app "$app"
-  wait_for_account
+  wait_for_app "$app"
 
   local target="$REGISTRY/$PROJECT/apps-$app/app:$tag"
   gcloud auth configure-docker "$REGISTRY" --quiet >&2
